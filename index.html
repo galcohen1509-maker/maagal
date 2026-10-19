@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>maagal</title>
+<meta name="description" content="איפה יש משחק עכשיו, ועם מי ברמה שלך">
+<meta name="theme-color" content="#0E5A73">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="maagal">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&family=Secular+One&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app" class="app">
+  <main id="screen" class="screen"></main>
+  <nav id="tabbar" class="tabbar" aria-label="ניווט"></nav>
+  <div id="backdrop" class="backdrop"></div>
+  <section id="sheet" class="sheet" role="dialog" aria-modal="true"></section>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
