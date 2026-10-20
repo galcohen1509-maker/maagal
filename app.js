@@ -61,7 +61,8 @@ async function rpc(fn, args = {}) {
   if (error) { console.error(fn, error); throw error; }
   return data;
 }
-function fail(e) { console.error(e); toast('משהו השתבש. בדוק חיבור ונסה שוב.'); }
+function fail(e) { console.error(e); const m = e?.message || '';
+  toast(m.includes('banned') ? 'החשבון שלך חסום. לפרטים פנה אלינו.' : m.includes('admin only') ? 'אין לך הרשאה לזה' : 'משהו השתבש. בדוק חיבור ונסה שוב.'); }
 
 const I = {
   sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -121,6 +122,7 @@ async function route() {
   if (a === 'spot' && b) return renderSpot(b);
   if (a === 'crew') return renderCrew();
   if (a === 'me') return renderProfile();
+  if (a === 'admin' && S.isAdmin) return renderAdmin();
   return renderHome();
 }
 
@@ -260,8 +262,8 @@ async function renderHome() {
     ${forMe.length ? forMe.slice(0, 5).map(circleCard).join('') : `<div class="card"><p>אין כרגע מעגל פתוח. תהיה הראשון להרים, החבר'ה יראו את זה.</p></div>`}
     <h2>מקומות</h2>
     ${S.spots.map(spotCard).join('')}
-    <div class="card"><b>אתה במקום טוב לשחק שלא ברשימה?</b><p class="muted small">פארק, גינה, מגרש שכונתי. סמן אותו, והחבר'ה יראו.</p>
-      <button class="btn line" data-act="new-spot">${I.pin} מקום חדש כאן</button></div>
+    <div class="card"><b>אתה במקום טוב לשחק שלא ברשימה?</b><p class="muted small">${S.isAdmin ? 'אתה הבעלים: מקום שתוסיף יופיע מיד לכולם.' : 'פארק, גינה, מגרש שכונתי. שלח בקשה, ואחרי שנאשר אותה כולם יראו את המקום.'}</p>
+      <button class="btn line" data-act="new-spot">${I.pin} ${S.isAdmin ? 'הוסף מקום כאן' : 'בקש מקום חדש כאן'}</button></div>
     <p class="muted small">"אני פה" עובד רק כשאתה באמת ליד המקום. ככה המספרים אמיתיים.</p>
     <div class="bottom"><button class="btn sun" data-act="new-circle">מרים מעגל</button></div>`, { tabs: 'home' });
 
@@ -329,9 +331,7 @@ async function startNewCircle(spotId) {
   const firstSport = (S.profile?.sports || []).find((s) => SPORTS.includes(s)) || SPORTS[0];
   const spot = spotId || here?.id || S.spots.find((s) => s.sports.includes(firstSport))?.id || S.spots[0]?.id;
   const sport = S.spots.find((s) => s.id === spot)?.sports.includes(firstSport) ? firstSport : (S.spots.find((s) => s.id === spot)?.sports[0] || firstSport);
-  // אין מקום מוכר לידך: ברירת המחדל היא לפתוח איפה שאתה עומד
-  const farFromAll = S.coords && !spotId && !here && !(S.spots[0]?.km != null && S.spots[0].km <= 0.3);
-  S.form = { spot, sport, size: DEFAULT_SIZE[sport] || 4, label: 'עכשיו', open: false, court: '', newSpot: farFromAll ? { name: '', kind: 'פארק' } : null };
+  S.form = { spot, sport, size: DEFAULT_SIZE[sport] || 4, label: 'עכשיו', open: false, court: '', newSpot: null };
   renderSheet();
 }
 function renderSheet() {
@@ -341,10 +341,10 @@ function renderSheet() {
   const sp = f.newSpot ? null : S.spots.find((s) => s.id === f.spot);
   const court = COURT_SPORTS.includes(f.sport);
   openSheet(`
-    <h1 style="font-size:26px">מרים מעגל${sp ? ` ב${esc(place(sp))}` : f.newSpot ? ' איפה שאתה עומד' : ''}</h1>
+    <h1 style="font-size:26px">מרים מעגל${sp ? ` ב${esc(place(sp))}` : f.newSpot ? (S.isAdmin ? ' איפה שאתה עומד' : ' במקום חדש') : ''}</h1>
     <div><h3 style="margin-bottom:8px">משחקים</h3><div class="chips">${SPORTS.map((s) => `<button class="chip ${f.sport === s ? 'on' : ''}" data-act="f-sport" data-v="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>
     <div><h3 style="margin-bottom:8px">איפה</h3><div class="chips">${spotsFor.slice(0, 6).map((s) => `<button class="chip sm ${!f.newSpot && f.spot === s.id ? 'on' : ''}" data-act="f-spot" data-v="${esc(s.id)}">${esc(s.short)}${s.minutes != null ? ` · ${s.minutes} דק׳` : ''}</button>`).join('')}
-      <button class="chip sm ${f.newSpot ? 'on' : ''}" data-act="f-newspot">${I.pin} איפה שאני עומד</button></div>
+      <button class="chip sm ${f.newSpot ? 'on' : ''}" data-act="f-newspot">${I.pin} ${S.isAdmin ? 'איפה שאני עומד' : 'מקום חדש (באישור)'}</button></div>
       ${f.newSpot ? newSpotFields(f.newSpot) : ''}</div>
     <div class="row"><div><h3>כמה חסרים?</h3><div class="muted small">סה״כ ${f.size} במגרש, כולל אותך</div></div>
       <div class="stepper"><button class="round" data-act="f-size" data-v="-1" aria-label="פחות">−</button><b style="font-size:24px">${f.size - 1}</b><button class="round on" data-act="f-size" data-v="1" aria-label="יותר">+</button></div></div>
@@ -355,7 +355,7 @@ function renderSheet() {
     ${court ? `<div><label for="court"><h3 style="margin-bottom:8px">מגרש</h3></label>
       <input id="court" class="field" maxlength="80" placeholder="למשל: מגרש 2 שמור, 19:00, ₪60 לשחקן" value="${esc(f.court)}">
       <p class="muted small" style="margin-top:6px">הזמנת מגרש מתוך האפליקציה תגיע בהמשך. בינתיים כתוב פה מה שמור.</p></div>` : ''}
-    <button class="btn sun" data-act="f-create">תרים את המעגל</button>
+    <button class="btn sun" data-act="f-create">${f.newSpot && !S.isAdmin ? 'שלח את המקום לאישור' : 'תרים את המעגל'}</button>
     <p class="muted small" style="text-align:center">המעגל נסגר לבד כשמתמלא או אחרי שעה</p>`);
   const ci = $('court'); if (ci) ci.addEventListener('input', (e) => { f.court = e.target.value; });
   $('nsname')?.addEventListener('input', (e) => { f.newSpot.name = e.target.value; });
@@ -365,7 +365,8 @@ function newSpotFields(ns) {
     <label for="nsname" class="small"><b>איך קוראים למקום?</b> <span class="muted">(לא חובה)</span></label>
     <input id="nsname" class="field" maxlength="30" placeholder="למשל: גינת הכלנית, מגרש הדשא ליד הבית" value="${esc(ns.name || '')}">
     <div class="chips">${KINDS.map((k) => `<button class="chip sm ${ns.kind === k ? 'on' : ''}" data-act="ns-kind" data-v="${esc(k)}">${esc(k)}</button>`).join('')}</div>
-    <p class="muted small">הנקודה נקבעת לפי המיקום שלך עכשיו. מי שבסביבה יראה אותה ויוכל לנווט אליה. אם כבר יש מקום ממש קרוב, נשתמש בו.</p></div>`;
+    <p class="muted small">${S.isAdmin ? 'המקום נוסף לפי המיקום שלך עכשיו ומופיע מיד לכולם.'
+      : 'המקום נקבע לפי המיקום שלך עכשיו ונשלח לאישור. אחרי שנאשר, כולם יראו אותו ואפשר יהיה לפתוח בו מעגל. אם כבר יש מקום ממש קרוב, נשתמש בו.'}</p></div>`;
 }
 async function placeSpotHere(ns, sport) {
   let name = (ns.name || '').trim();
@@ -374,23 +375,25 @@ async function placeSpotHere(ns, sport) {
   const c = await getLocation({ ask: true });
   if (!c) { toast('צריך מיקום כדי ליצור מקום. אפשר להפעיל בהגדרות הדפדפן.'); return null; }
   const r = await rpc('add_spot', { p_name: name, p_kind: ns.kind || 'פארק', p_sports: sport ? [sport] : (S.profile?.sports || []), p_lat: c.lat, p_lng: c.lng });
-  if (!r.ok) { toast(r.reason === 'limit' ? 'הגעת למגבלה של 5 מקומות חדשים היום' : 'תן שם למקום, לפחות 2 אותיות'); return null; }
+  if (!r.ok) { toast(r.reason === 'limit' ? 'הגעת למגבלה של בקשות למקומות חדשים היום' : 'תן שם למקום, לפחות 2 אותיות'); return null; }
+  if (r.pending) { toast(r.again ? 'כבר שלחת בקשה למקום הזה. היא מחכה לאישור.' : 'הבקשה נשלחה. אחרי שנאשר, המקום יופיע לכולם.'); return 'pending'; }
   if (r.existing) toast(`כבר יש פה מקום: ${r.name}. השתמשנו בו.`);
   return r.id;
 }
 function openNewSpotSheet() {
   S.ns = S.ns || { name: '', kind: 'פארק' };
-  openSheet(`<h1 style="font-size:26px">מקום חדש כאן</h1>
-    <p class="muted">בפארק, בגינה, או בכל מקום טוב לקפיצות. החבר'ה יראו שיש פה אקשן.</p>
+  openSheet(`<h1 style="font-size:26px">${S.isAdmin ? 'הוסף מקום כאן' : 'בקשה למקום חדש'}</h1>
+    <p class="muted">בפארק, בגינה, או בכל מקום טוב לקפיצות.</p>
     ${newSpotFields(S.ns)}
-    <button class="btn sun" data-act="ns-save">סמן אותי פה</button>`);
+    <button class="btn sun" data-act="ns-save">${S.isAdmin ? 'הוסף וסמן אותי פה' : 'שלח לאישור'}</button>`);
   $('nsname')?.addEventListener('input', (e) => { S.ns.name = e.target.value; });
 }
 async function createCircle(btn) {
   const f = S.form; if (!f.spot && !f.newSpot) return toast('בחר מקום');
   btn.disabled = true;
   try {
-    if (f.newSpot) { const sid = await placeSpotHere(f.newSpot, f.sport); if (!sid) { btn.disabled = false; return; } f.spot = sid; f.newSpot = null; }
+    if (f.newSpot) { const sid = await placeSpotHere(f.newSpot, f.sport); if (!sid) { btn.disabled = false; return; }
+      if (sid === 'pending') { closeSheet(); return; } f.spot = sid; f.newSpot = null; }
     const id = await rpc('create_circle', { p_spot: f.spot, p_sport: f.sport, p_size: f.size, p_label: f.label, p_open: f.open, p_court: f.court.trim() || null });
     closeSheet(); S.justCreated = id; go(`#/c/${id}`);
   } catch (e) { btn.disabled = false; fail(e); }
@@ -548,6 +551,111 @@ async function renderCrew() {
 }
 
 // ---------- פרופיל ----------
+// ---------- ניהול (רק לבעלים. השרת בודק הרשאה בכל פעולה) ----------
+const mapLink = (lat, lng) => `https://www.google.com/maps?q=${lat},${lng}`;
+async function renderAdmin(keepScroll) {
+  const y = window.scrollY;
+  if (!keepScroll) loading();
+  let d; try { d = await rpc('admin_overview'); } catch (e) { return fail(e); }
+  S.admin = d; S.adminNew = S.adminNew || { name: '', kind: 'פארק', radius: 400, coords: '' };
+  const n = S.adminNew; const k = d.counts;
+  const sec = (title, count, body, open) => `<details class="card" ${open ? 'open' : ''}><summary style="font-weight:700;cursor:pointer;min-height:32px">${title}${count != null ? ` · ${count}` : ''}</summary><div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">${body}</div></details>`;
+  const line = '<div style="height:1px;background:var(--line)"></div>';
+  const empty = (t) => `<p class="muted small">${t}</p>`;
+  screen(`
+    <button class="linkbtn" data-go="#/me" style="align-self:flex-start">חזרה</button>
+    <h1>ניהול</h1>
+    <div class="grid3"><div class="stat"><b>${k.users}</b><span class="muted small">משתמשים</span></div>
+      <div class="stat"><b>${k.games}</b><span class="muted small">משחקים</span></div>
+      <div class="stat"><b>${k.ratings}</b><span class="muted small">דירוגים</span></div></div>
+
+    ${sec('בקשות למקומות חדשים', d.pending.length, d.pending.length ? d.pending.map((s) => `<div style="display:flex;flex-direction:column;gap:8px">
+        <div class="row"><b>${esc(s.name)}</b><span class="muted small">${esc(s.kind)} · ${ago(s.created_at)}</span></div>
+        <div class="muted small">ביקש: ${esc(s.by || '?')} · <a href="${mapLink(s.lat, s.lng)}" target="_blank" rel="noopener">לראות במפה</a></div>
+        <input id="pn-${esc(s.id)}" class="field" maxlength="30" value="${esc(s.name)}" aria-label="שם המקום">
+        <div class="chips"><button class="btn sea" style="flex:1;min-height:44px" data-act="a-approve" data-v="${esc(s.id)}">אשר</button>
+          <button class="btn mute" style="flex:1;min-height:44px" data-act="a-reject" data-v="${esc(s.id)}">דחה</button></div></div>`).join(line) : empty('אין בקשות שמחכות.'), d.pending.length > 0)}
+
+    ${sec('הוסף מקום', null, `
+      <input id="an-name" class="field" maxlength="40" placeholder="שם המקום" value="${esc(n.name)}">
+      <div class="chips">${KINDS.map((x) => `<button class="chip sm ${n.kind === x ? 'on' : ''}" data-act="a-kind" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+      <label class="small" for="an-radius"><b>רדיוס "אני פה" במטרים</b></label>
+      <input id="an-radius" class="field" type="number" inputmode="numeric" min="50" max="2000" value="${n.radius}">
+      <label class="small" for="an-coords"><b>קואורדינטות</b> <span class="muted">(לא חובה. ריק = המיקום שלך עכשיו)</span></label>
+      <input id="an-coords" class="field" dir="ltr" placeholder="32.0849, 34.7680" value="${esc(n.coords)}">
+      <p class="muted small">אפשר להעתיק קואורדינטות מגוגל מפות: לחיצה ארוכה על נקודה, ואז להעתיק את המספרים.</p>
+      <button class="btn sun" data-act="a-add">הוסף מקום</button>`)}
+
+    ${sec('מקומות', d.spots.length, d.spots.map((s) => `<div style="display:flex;flex-direction:column;gap:6px">
+        <div class="row"><b>${esc(s.name)}</b><span class="muted small">${esc(s.kind)} · ${s.radius_m} מ׳</span></div>
+        <div class="muted small">${s.by ? `הוסיף: ${esc(s.by)} · ` : ''}${s.circles} מעגלים · <a href="${mapLink(s.lat, s.lng)}" target="_blank" rel="noopener">במפה</a></div>
+        <div class="chips"><button class="chip sm" data-act="a-rename" data-v="${esc(s.id)}">שנה שם</button>
+          <button class="chip sm" data-act="a-here" data-v="${esc(s.id)}">${I.pin} העבר למיקום שלי</button>
+          <button class="chip sm" data-act="a-radius" data-v="${esc(s.id)}">רדיוס</button>
+          ${s.circles ? '' : `<button class="chip sm" data-act="a-del" data-v="${esc(s.id)}">מחק</button>`}</div></div>`).join(line))}
+
+    ${sec('מעגלים פתוחים עכשיו', d.circles.length, d.circles.length ? d.circles.map((c) => `<div class="row">
+        <div><b>${esc(c.sport)} · ${esc(c.spot)}</b><div class="muted small">${esc(c.org)} · ${c.members}/${c.size} · ${ago(c.created_at)}</div></div>
+        <div class="chips"><button class="chip sm" data-go="#/c/${c.id}">פתח</button><button class="chip sm" data-act="a-close" data-v="${c.id}">סגור</button></div></div>`).join(line) : empty('אין מעגלים פתוחים.'))}
+
+    ${sec('דיווחים על שחקנים', d.reports.length, d.reports.length ? d.reports.map((r) => `<div style="display:flex;flex-direction:column;gap:6px">
+        <div class="row"><b>${esc(r.reported || '?')}</b><span class="muted small">${ago(r.created_at)}</span></div>
+        <div class="small">${esc(r.reason || '')}</div>
+        <div class="muted small">דיווח: ${esc(r.reporter || '?')}${r.spot ? ` · ב${esc(r.spot)}` : ''}</div>
+        ${r.reported_id ? `<button class="chip sm ${r.banned ? 'on' : ''}" style="align-self:flex-start" data-act="a-ban" data-v="${r.reported_id}:${r.banned ? 0 : 1}">${r.banned ? 'חסום · לחץ לשחרור' : 'חסום שחקן'}</button>` : ''}</div>`).join(line) : empty('אין דיווחים.'))}
+
+    ${sec('ביקורות על האפליקציה', d.feedback.length, d.feedback.length ? d.feedback.map((f) => `<div style="display:flex;flex-direction:column;gap:4px">
+        <div class="small" style="white-space:pre-wrap">${esc(f.body)}</div><div class="muted small">${esc(f.nick || '?')} · ${ago(f.created_at)}</div></div>`).join(line) : empty('עוד אין ביקורות.'))}
+
+    ${sec('דירוגים אחרי משחקים', d.ratings.length, d.ratings.length ? d.ratings.map((r) => `<div style="display:flex;flex-direction:column;gap:4px">
+        <div class="small"><b>${esc(r.rater || '?')}</b> דירג את <b>${esc(r.ratee || '?')}</b> · ${esc(r.sport)}: ${esc(LEVELS[r.level - 1] || r.level)}${r.again ? ' · בא לו עוד משחק' : ''}</div>
+        ${(r.tags || []).length ? `<div class="chips" style="gap:4px">${r.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+        <div class="muted small">${ago(r.created_at)}</div></div>`).join(line) : empty('עוד אין דירוגים.'))}
+
+    ${sec('חסומים', d.banned.length, d.banned.length ? d.banned.map((u) => `<div class="row"><b>${esc(u.nickname)}</b>
+        <button class="chip sm" data-act="a-ban" data-v="${u.id}:0">שחרר</button></div>`).join(line) : empty('אף אחד לא חסום.'))}
+
+    ${sec('הגדרות האלגוריתם', null, d.settings.map((s) => `<div style="display:flex;flex-direction:column;gap:6px">
+        <label class="small" for="st-${esc(s.key)}"><b dir="ltr">${esc(s.key)}</b> · ${esc(s.note || '')}</label>
+        <div class="chips"><input id="st-${esc(s.key)}" class="field" style="flex:1" type="number" step="any" inputmode="decimal" value="${s.value}">
+          <button class="chip sm" data-act="a-set" data-v="${esc(s.key)}">שמור</button></div></div>`).join(''))}
+  `);
+  ['an-name', 'an-radius', 'an-coords'].forEach((id) => $(id)?.addEventListener('input', (e) => { n[{ 'an-name': 'name', 'an-radius': 'radius', 'an-coords': 'coords' }[id]] = e.target.value; }));
+  if (keepScroll) window.scrollTo(0, y);
+}
+async function adminDo(fn, args, msg) {
+  try { await rpc(fn, args); if (msg) toast(msg); await renderAdmin(true); } catch (e) { fail(e); }
+}
+async function adminAdd(btn) {
+  const n = S.adminNew; const name = n.name.trim();
+  if (name.length < 2) return toast('תן שם למקום');
+  let lat, lng;
+  if (n.coords.trim()) {
+    const m = n.coords.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (!m) return toast('קואורדינטות בפורמט: 32.0849, 34.7680');
+    lat = Number(m[1]); lng = Number(m[2]);
+  } else {
+    const c = await getLocation({ ask: true }); if (!c) return toast('צריך מיקום, או להדביק קואורדינטות');
+    lat = c.lat; lng = c.lng;
+  }
+  btn.disabled = true;
+  try {
+    await rpc('admin_save_spot', { p_id: null, p_name: name, p_kind: n.kind, p_lat: lat, p_lng: lng, p_radius: Number(n.radius) || 400, p_sports: null });
+    S.adminNew = null; toast('המקום נוסף'); await renderAdmin(true);
+  } catch (e) { btn.disabled = false; fail(e); }
+}
+async function adminEditSpot(id, what) {
+  const s = S.admin.spots.find((x) => x.id === id); if (!s) return;
+  let { name, lat, lng, radius_m: radius } = s;
+  if (what === 'name') { const v = prompt('שם חדש למקום', name); if (!v || v.trim().length < 2) return; name = v.trim(); }
+  if (what === 'radius') { const v = Number(prompt('רדיוס "אני פה" במטרים (50 עד 2000)', radius)); if (!v) return; radius = v; }
+  if (what === 'here') {
+    const c = await getLocation({ ask: true }); if (!c) return toast('צריך מיקום');
+    if (!confirm(`להעביר את "${name}" למיקום שלך עכשיו?`)) return; lat = c.lat; lng = c.lng;
+  }
+  return adminDo('admin_save_spot', { p_id: id, p_name: name, p_kind: s.kind, p_lat: lat, p_lng: lng, p_radius: radius, p_sports: null }, 'נשמר');
+}
+
 async function renderProfile() {
   loading();
   try { await rpc('refresh_my_levels'); S.profile = await rpc('my_profile'); S.pending = (await rpc('pending_ratings')) || []; } catch (e) { return fail(e); }
@@ -589,6 +697,11 @@ async function renderProfile() {
     : `<div class="card"><div class="row start">${I.lock}<div style="flex:1"><b>החשבון שלך</b><div class="muted small">${esc(authLabel())}</div></div>
         <button class="chip sm" data-act="logout">התנתק</button></div>
         <div class="row start muted small" style="gap:6px"><span class="tag">אימות זהות</span>בקרוב: וי כחול למי שאימת תעודה</div></div>`}
+    ${S.isAdmin ? `<button class="btn sea" data-go="#/admin">${I.lock} ניהול</button>` : ''}
+    <div class="card"><label for="fbtext"><b>ביקורת על האפליקציה</b></label>
+      <p class="muted small">מה עובד, מה מציק, מה חסר. נקרא כל מילה.</p>
+      <textarea id="fbtext" class="field" rows="3" maxlength="1000" style="min-height:84px;padding-top:10px"></textarea>
+      <button class="btn line" data-act="fb-send">שלח</button></div>
     <p class="muted small" style="text-align:center">טיפ: הוסף את maagal למסך הבית מתפריט השיתוף של הדפדפן, והיא תיפתח כמו אפליקציה.</p>`, { tabs: 'profile' });
 }
 
@@ -620,7 +733,7 @@ document.addEventListener('click', async (e) => {
       case 'new-circle': return startNewCircle(v);
       case 'new-spot': return openNewSpotSheet();
       case 'ns-kind': if (S.form?.newSpot && $('sheet').contains(a) && document.querySelector('[data-act="f-create"]')) { S.form.newSpot.kind = v; return renderSheet(); } S.ns.kind = v; return openNewSpotSheet();
-      case 'ns-save': { a.disabled = true; const id = await placeSpotHere(S.ns, null); a.disabled = false; if (!id) return; S.ns = null; closeSheet(); toast('סימנו אותך במקום החדש'); return go(`#/spot/${id}`); }
+      case 'ns-save': { a.disabled = true; const id = await placeSpotHere(S.ns, null); a.disabled = false; if (!id) return; S.ns = null; closeSheet(); if (id === 'pending') return; toast('סימנו אותך במקום החדש'); return go(`#/spot/${id}`); }
       case 'f-newspot': S.form.newSpot = S.form.newSpot ? null : { name: '', kind: 'פארק' }; return renderSheet();
       case 'f-sport': S.form.sport = v; S.form.size = DEFAULT_SIZE[v] || 4; return renderSheet();
       case 'f-spot': S.form.spot = v; S.form.newSpot = null; return renderSheet();
@@ -636,6 +749,22 @@ document.addEventListener('click', async (e) => {
         } catch (err) { a.disabled = false; return fail(err); } }
       case 'invite': return invite(S.circle);
       case 'copy-link': return copyLink(v);
+      case 'fb-send': { const t = $('fbtext').value.trim(); if (t.length < 2) return toast('כתוב משהו קודם');
+        a.disabled = true; try { await rpc('send_feedback', { p_body: t }); $('fbtext').value = ''; toast('תודה! קיבלנו.'); } catch (err) { fail(err); } a.disabled = false; return; }
+      case 'a-approve': return adminDo('admin_review_spot', { p_id: v, p_approve: true, p_name: $(`pn-${v}`)?.value || null }, 'המקום אושר ומופיע לכולם');
+      case 'a-reject': if (!confirm('לדחות את הבקשה?')) return; return adminDo('admin_review_spot', { p_id: v, p_approve: false }, 'הבקשה נדחתה');
+      case 'a-kind': S.adminNew.kind = v; return renderAdmin(true);
+      case 'a-add': return adminAdd(a);
+      case 'a-rename': return adminEditSpot(v, 'name');
+      case 'a-radius': return adminEditSpot(v, 'radius');
+      case 'a-here': return adminEditSpot(v, 'here');
+      case 'a-del': { if (!confirm('למחוק את המקום?')) return;
+        try { const r = await rpc('admin_delete_spot', { p_id: v }); toast(r.ok ? 'נמחק' : 'יש בו מעגלים, אי אפשר למחוק'); await renderAdmin(true); } catch (err) { fail(err); } return; }
+      case 'a-close': if (!confirm('לסגור את המעגל לכולם?')) return; return adminDo('admin_close_circle', { p_circle: v }, 'המעגל נסגר');
+      case 'a-ban': { const [uid, on] = v.split(':'); if (on === '1' && !confirm('לחסום את השחקן? הוא לא יוכל לפתוח מעגלים, להצטרף או לכתוב.')) return;
+        return adminDo('admin_ban', { p_user: uid, p_ban: on === '1' }, on === '1' ? 'השחקן נחסם' : 'השחקן שוחרר'); }
+      case 'a-set': { const val = Number($(`st-${v}`).value); if (Number.isNaN(val)) return toast('מספר לא תקין');
+        return adminDo('admin_set_setting', { p_key: v, p_value: val }, 'נשמר'); }
       case 'finish': if (!confirm('לסגור את המשחק ולעבור לדירוג?')) return; try { await rpc('finish_circle', { p_circle: S.circle.id }); go(`#/rate/${S.circle.id}`); } catch (err) { fail(err); } return;
       case 'leave': if (!confirm(S.circle.organizer === S.session.user.id ? 'לבטל את המעגל לכולם?' : 'לצאת מהמעגל?')) return;
         try { await rpc('leave_circle', { p_circle: S.circle.id }); go('#/'); } catch (err) { fail(err); } return;
@@ -679,6 +808,7 @@ document.addEventListener('submit', (e) => {
   sb.auth.onAuthStateChange((_e, session) => { S.session = session; });
   if (S.session) {
     try { S.profile = await rpc('my_profile'); } catch (e) { console.error(e); }
+    try { S.isAdmin = !!(await rpc('is_admin')); } catch { S.isAdmin = false; }
     if (!S.profile && !isAnon() && !S.onboard.nick) {
       const m = S.session.user.user_metadata || {}; S.onboard.nick = (m.full_name || m.name || '').split(' ')[0].slice(0, 20);
     }
