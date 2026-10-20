@@ -9,9 +9,21 @@ const DEFAULT_SIZE = { "פוצ'יוולי": 4, 'מטקות': 2, 'כדורעף': 
 const COURT_SPORTS = ['פאדל', 'טניס'];
 const LEVELS = ['מתחיל', 'מתחמם', 'סולידי', 'חזק', 'מפלצת'];
 const TAGS = ['אווירה טובה', 'משחק הוגן', 'דיוק בזמנים'];
+const KINDS = ['פארק', 'חוף', 'מגרש', 'אחר'];
 const WHEN = ['עכשיו', 'עוד חצי שעה', 'בשקיעה'];
 
-const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } });
+const SITE = 'https://galcohen1509-maker.github.io/maagal/';
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' } });
+const ss = { get(k) { try { return sessionStorage.getItem(k); } catch { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch {} }, del(k) { try { sessionStorage.removeItem(k); } catch {} } };
+const isAnon = () => !!S.session?.user?.is_anonymous;
+const authLabel = () => { const u = S.session?.user; if (!u || u.is_anonymous) return null;
+  const g = (u.identities || []).some((i) => i.provider === 'google'); return g ? `Google · ${u.email || ''}` : (u.email || 'חשבון'); };
+const authError = (e) => { const m = (e?.message || '').toLowerCase();
+  if (m.includes('invalid login')) return 'מייל או סיסמה לא נכונים';
+  if (m.includes('already registered') || m.includes('already been registered') || m.includes('already exists')) return 'המייל הזה כבר רשום. נסה "יש לי כבר חשבון"';
+  if (m.includes('password')) return 'סיסמה של לפחות 6 תווים';
+  if (m.includes('email')) return 'בדוק את כתובת המייל';
+  return 'משהו השתבש. נסה שוב.'; };
 
 // ---------- מצב ----------
 const S = {
@@ -51,6 +63,7 @@ const I = {
   me: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.2-6 8-6s7 2 8 6"/></svg>',
   pin: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>',
   share: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>',
+  google: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.6 12.2c0-.8-.1-1.5-.2-2.2H12v4.2h5.9a5 5 0 0 1-2.2 3.3v2.7h3.6c2.1-1.9 3.3-4.8 3.3-8z"/><path fill="#34A853" d="M12 23c3 0 5.5-1 7.3-2.7l-3.6-2.8c-1 .7-2.2 1.1-3.7 1.1-2.9 0-5.3-1.9-6.2-4.5H2.1v2.8A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.8 14.1a6.6 6.6 0 0 1 0-4.2V7.1H2.1a11 11 0 0 0 0 9.8z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3 .6 4.2 1.6l3.1-3.1A11 11 0 0 0 2.1 7.1l3.7 2.8C6.7 7.3 9.1 5.4 12 5.4z"/></svg>',
   lock: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
 };
 
@@ -107,11 +120,26 @@ async function route() {
 
 // ---------- כניסה ראשונה ----------
 function renderOnboard() {
-  const o = S.onboard;
+  const o = S.onboard; o.mode = o.mode || 'pick';
+  const signed = S.session && !isAnon();
+  const login = o.mode === 'login';
+  const acct = signed
+    ? `<div class="card"><div class="row start">${I.lock}<div style="flex:1"><b>מחובר</b><div class="muted small">${esc(authLabel())}</div></div></div></div>`
+    : `<div class="card">
+        <h2>${login ? 'כניסה לחשבון' : 'איך נכנסים?'}</h2>
+        <button class="btn line" data-act="google">${I.google} המשך עם Google</button>
+        ${o.mode === 'pick' ? `<button class="btn ghost" data-act="ob-mode" data-v="signup">או עם מייל וסיסמה</button>` : `
+          <input id="email" class="field" type="email" inputmode="email" autocomplete="email" dir="ltr" placeholder="מייל" value="${esc(o.email || '')}">
+          <input id="pass" class="field" type="password" autocomplete="${login ? 'current-password' : 'new-password'}" dir="ltr" placeholder="סיסמה, לפחות 6 תווים">
+          <button class="linkbtn" data-act="ob-mode" data-v="${login ? 'signup' : 'login'}">${login ? 'אין לי חשבון, להירשם' : 'יש לי כבר חשבון'}</button>`}
+        ${o.mode === 'pick' ? `<p class="muted small">אפשר גם בלי חשבון: רק כינוי, למטה. שומרים את הפרופיל מתי שבא לך.</p>` : ''}
+      </div>`;
   screen(`
     <div class="row"><div class="brand">maagal</div></div>
-    <h1>בא לך לשחק עכשיו?<br>יש מעגל שמחכה לך.</h1>
-    <p class="muted" style="font-size:16px">רואים מי בחוף ובמגרש, קופצים, משחקים. בלי טפסים ובלי מבחני רמה.</p>
+    <h1>${login ? 'ברוך השב' : 'בא לך לשחק עכשיו?<br>יש מעגל שמחכה לך.'}</h1>
+    ${login ? '' : '<p class="muted" style="font-size:16px">רואים מי בחוף ובמגרש, קופצים, משחקים. בלי טפסים ובלי מבחני רמה.</p>'}
+    ${acct}
+    ${login ? '' : `
     <div class="card">
       <label for="nick"><h2>איך קוראים לך בחוף?</h2></label>
       <input id="nick" class="field" maxlength="20" autocomplete="nickname" placeholder="כינוי, 2–20 אותיות" value="${esc(o.nick || '')}">
@@ -124,23 +152,50 @@ function renderOnboard() {
       <div class="row start">${I.pin}<div style="flex:1"><b>מיקום</b><div class="muted small">כדי להראות מה קרוב ולאמת "אני פה". שומרים רק באיזה חוף אתה, אף פעם לא מיקום מדויק.</div></div></div>
       <button class="btn line ${S.locState === 'ok' ? 'on' : ''}" data-act="ob-loc">${S.locState === 'ok' ? 'המיקום פועל' : S.locState === 'denied' ? 'המיקום חסום. אפשר להפעיל בהגדרות הדפדפן' : 'אפשר מיקום'}</button>
     </div>
-    <p class="muted small">הרמה שלך? נגלה במגרש. אחרי 3 משחקים עם דירוגים מכל הצדדים, תקבל רמה אמיתית.</p>
-    <div class="bottom low"><button class="btn sun" data-act="ob-go">יאללה, תראו לי מה פתוח</button></div>`);
-  $('nick').addEventListener('input', (e) => { o.nick = e.target.value; });
+    <p class="muted small">הרמה שלך? נגלה במגרש. אחרי 3 משחקים עם דירוגים מכל הצדדים, תקבל רמה אמיתית.</p>`}
+    <div class="bottom low"><button class="btn sun" data-act="ob-go">${login ? 'כניסה' : signed || o.mode === 'signup' ? 'יאללה, תראו לי מה פתוח' : 'יאללה, רק עם כינוי'}</button></div>`);
+  $('nick')?.addEventListener('input', (e) => { o.nick = e.target.value; });
+  $('email')?.addEventListener('input', (e) => { o.email = e.target.value; });
+}
+
+async function googleSignIn(link) {
+  ss.set('after', S.after || location.hash || '#/');
+  if (S.onboard.nick) ss.set('nick', S.onboard.nick);
+  if (S.onboard.sports.length) ss.set('sports', JSON.stringify(S.onboard.sports));
+  const opts = { provider: 'google', options: { redirectTo: SITE } };
+  const { error } = link ? await sb.auth.linkIdentity(opts) : await sb.auth.signInWithOAuth(opts);
+  if (error) toast(authError(error));
 }
 
 async function finishOnboard(btn) {
-  const nick = (S.onboard.nick || '').trim();
-  if (nick.length < 2) { toast('כינוי של לפחות 2 אותיות'); $('nick').focus(); return; }
+  const o = S.onboard;
+  const email = ($('email')?.value || '').trim(), pass = $('pass')?.value || '';
   btn.disabled = true;
   try {
-    if (!S.session) {
-      const { data, error } = await sb.auth.signInAnonymously();
-      if (error) throw error;
+    if (o.mode === 'login') {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+      if (error) { btn.disabled = false; return toast(authError(error)); }
       S.session = data.session;
+      S.profile = await rpc('my_profile');
+      if (!S.profile) { o.mode = 'pick'; btn.disabled = false; toast('נכנסת. עכשיו רק כינוי וספורט.'); return renderOnboard(); }
+    } else {
+      const nick = (o.nick || '').trim();
+      if (nick.length < 2) { btn.disabled = false; toast('כינוי של לפחות 2 אותיות'); $('nick')?.focus(); return; }
+      if (!S.session) {
+        if (o.mode === 'signup') {
+          const { data, error } = await sb.auth.signUp({ email, password: pass });
+          if (error) { btn.disabled = false; return toast(authError(error)); }
+          if (!data.session) { btn.disabled = false; return toast('נרשמת. נכנס עם המייל והסיסמה.'); }
+          S.session = data.session;
+        } else {
+          const { data, error } = await sb.auth.signInAnonymously();
+          if (error) throw error;
+          S.session = data.session;
+        }
+      }
+      await rpc('save_profile', { p_nickname: nick, p_sports: o.sports });
+      S.profile = await rpc('my_profile');
     }
-    await rpc('save_profile', { p_nickname: nick, p_sports: S.onboard.sports });
-    S.profile = await rpc('my_profile');
     const target = S.after && S.after !== '#/' ? S.after : '#/';
     S.after = null; go(target);
   } catch (e) { btn.disabled = false; fail(e); }
@@ -199,6 +254,8 @@ async function renderHome() {
     ${forMe.length ? forMe.slice(0, 5).map(circleCard).join('') : `<div class="card"><p>אין כרגע מעגל פתוח. תהיה הראשון להרים, החבר'ה יראו את זה.</p></div>`}
     <h2>מקומות</h2>
     ${S.spots.map(spotCard).join('')}
+    <div class="card"><b>אתה במקום טוב לשחק שלא ברשימה?</b><p class="muted small">פארק, גינה, מגרש שכונתי. סמן אותו, והחבר'ה יראו.</p>
+      <button class="btn line" data-act="new-spot">${I.pin} מקום חדש כאן</button></div>
     <p class="muted small">"אני פה" עובד רק כשאתה באמת ליד המקום. ככה המספרים אמיתיים.</p>
     <div class="bottom"><button class="btn sun" data-act="new-circle">מרים מעגל</button></div>`, { tabs: 'home' });
 
@@ -270,14 +327,16 @@ async function startNewCircle(spotId) {
 }
 function renderSheet() {
   const f = S.form;
-  const spotsFor = S.spots.filter((s) => s.sports.includes(f.sport));
+  const spotsFor = S.spots.filter((s) => s.sports.includes(f.sport) || !s.sports.length || s.id === f.spot);
   if (!spotsFor.find((s) => s.id === f.spot)) f.spot = spotsFor[0]?.id;
-  const sp = S.spots.find((s) => s.id === f.spot);
+  const sp = f.newSpot ? null : S.spots.find((s) => s.id === f.spot);
   const court = COURT_SPORTS.includes(f.sport);
   openSheet(`
-    <h1 style="font-size:26px">מרים מעגל${sp ? ` ב${esc(place(sp))}` : ''}</h1>
+    <h1 style="font-size:26px">מרים מעגל${sp ? ` ב${esc(place(sp))}` : f.newSpot?.name ? ` ב${esc(f.newSpot.name)}` : ''}</h1>
     <div><h3 style="margin-bottom:8px">משחקים</h3><div class="chips">${SPORTS.map((s) => `<button class="chip ${f.sport === s ? 'on' : ''}" data-act="f-sport" data-v="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>
-    <div><h3 style="margin-bottom:8px">איפה</h3><div class="chips">${spotsFor.slice(0, 6).map((s) => `<button class="chip sm ${f.spot === s.id ? 'on' : ''}" data-act="f-spot" data-v="${esc(s.id)}">${esc(s.short)}${s.minutes != null ? ` · ${s.minutes} דק׳` : ''}</button>`).join('')}</div></div>
+    <div><h3 style="margin-bottom:8px">איפה</h3><div class="chips">${spotsFor.slice(0, 6).map((s) => `<button class="chip sm ${!f.newSpot && f.spot === s.id ? 'on' : ''}" data-act="f-spot" data-v="${esc(s.id)}">${esc(s.short)}${s.minutes != null ? ` · ${s.minutes} דק׳` : ''}</button>`).join('')}
+      <button class="chip sm ${f.newSpot ? 'on' : ''}" data-act="f-newspot">${I.pin} מקום חדש כאן</button></div>
+      ${f.newSpot ? newSpotFields(f.newSpot) : ''}</div>
     <div class="row"><div><h3>כמה חסרים?</h3><div class="muted small">סה״כ ${f.size} במגרש, כולל אותך</div></div>
       <div class="stepper"><button class="round" data-act="f-size" data-v="-1" aria-label="פחות">−</button><b style="font-size:24px">${f.size - 1}</b><button class="round on" data-act="f-size" data-v="1" aria-label="יותר">+</button></div></div>
     <div><h3 style="margin-bottom:8px">מי מוזמן?</h3><div class="chips">
@@ -290,11 +349,37 @@ function renderSheet() {
     <button class="btn sun" data-act="f-create">תרים את המעגל</button>
     <p class="muted small" style="text-align:center">המעגל נסגר לבד כשמתמלא או אחרי שעה</p>`);
   const ci = $('court'); if (ci) ci.addEventListener('input', (e) => { f.court = e.target.value; });
+  $('nsname')?.addEventListener('input', (e) => { f.newSpot.name = e.target.value; });
+}
+function newSpotFields(ns) {
+  return `<div class="card" style="background:var(--sand);margin-top:10px;gap:8px">
+    <label for="nsname" class="small"><b>איך קוראים למקום?</b></label>
+    <input id="nsname" class="field" maxlength="30" placeholder="למשל: גינת הכלנית, מגרש הדשא ליד הבית" value="${esc(ns.name || '')}">
+    <div class="chips">${KINDS.map((k) => `<button class="chip sm ${ns.kind === k ? 'on' : ''}" data-act="ns-kind" data-v="${esc(k)}">${esc(k)}</button>`).join('')}</div>
+    <p class="muted small">המקום נוצר לפי המיקום שלך עכשיו, אז צריך להיות שם. אם כבר יש מקום ממש קרוב, נשתמש בו.</p></div>`;
+}
+async function placeSpotHere(ns, sport) {
+  if ((ns.name || '').trim().length < 2) { toast('תן שם למקום, לפחות 2 אותיות'); return null; }
+  const c = await getLocation({ ask: true });
+  if (!c) { toast('צריך מיקום כדי ליצור מקום. אפשר להפעיל בהגדרות הדפדפן.'); return null; }
+  const r = await rpc('add_spot', { p_name: ns.name.trim(), p_kind: ns.kind || 'פארק', p_sports: sport ? [sport] : (S.profile?.sports || []), p_lat: c.lat, p_lng: c.lng });
+  if (!r.ok) { toast(r.reason === 'limit' ? 'הגעת למגבלה של 5 מקומות חדשים היום' : 'תן שם למקום, לפחות 2 אותיות'); return null; }
+  if (r.existing) toast(`כבר יש פה מקום: ${r.name}. השתמשנו בו.`);
+  return r.id;
+}
+function openNewSpotSheet() {
+  S.ns = S.ns || { name: '', kind: 'פארק' };
+  openSheet(`<h1 style="font-size:26px">מקום חדש כאן</h1>
+    <p class="muted">בפארק, בגינה, או בכל מקום טוב לקפיצות. החבר'ה יראו שיש פה אקשן.</p>
+    ${newSpotFields(S.ns)}
+    <button class="btn sun" data-act="ns-save">סמן אותי פה</button>`);
+  $('nsname')?.addEventListener('input', (e) => { S.ns.name = e.target.value; });
 }
 async function createCircle(btn) {
-  const f = S.form; if (!f.spot) return toast('בחר מקום');
+  const f = S.form; if (!f.spot && !f.newSpot) return toast('בחר מקום');
   btn.disabled = true;
   try {
+    if (f.newSpot) { const sid = await placeSpotHere(f.newSpot, f.sport); if (!sid) { btn.disabled = false; return; } f.spot = sid; f.newSpot = null; }
     const id = await rpc('create_circle', { p_spot: f.spot, p_sport: f.sport, p_size: f.size, p_label: f.label, p_open: f.open, p_court: f.court.trim() || null });
     closeSheet(); S.justCreated = id; go(`#/c/${id}`);
   } catch (e) { btn.disabled = false; fail(e); }
@@ -471,6 +556,16 @@ async function renderProfile() {
     <div class="card"><label for="pnick"><b>כינוי</b></label><input id="pnick" class="field" maxlength="20" value="${esc(p.nickname)}">
       <b>ספורט</b><div class="chips">${SPORTS.map((s) => `<button class="chip sm pill ${(p.sports || []).includes(s) ? 'on' : ''}" data-act="p-sport" data-v="${esc(s)}">${esc(s)}</button>`).join('')}</div>
       <button class="btn line" data-act="p-save">שמור</button></div>
+    ${isAnon() ? `<div class="card"><b>שמור את הפרופיל שלך</b>
+        <p class="muted small">כרגע הפרופיל שמור רק בטלפון הזה. מחבר חשבון, והרמה, החבר'ה וההיסטוריה נשארים איתך בכל מכשיר.</p>
+        <button class="btn line" data-act="link-google">${I.google} שמור עם Google</button>
+        ${S.showSave ? `<input id="semail" class="field" type="email" inputmode="email" dir="ltr" placeholder="מייל">
+          <input id="spass" class="field" type="password" autocomplete="new-password" dir="ltr" placeholder="סיסמה, לפחות 6 תווים">
+          <button class="btn sea" data-act="link-email">שמור עם מייל וסיסמה</button>` : `<button class="btn ghost" data-act="show-save">או עם מייל וסיסמה</button>`}
+      </div>`
+    : `<div class="card"><div class="row start">${I.lock}<div style="flex:1"><b>החשבון שלך</b><div class="muted small">${esc(authLabel())}</div></div>
+        <button class="chip sm" data-act="logout">התנתק</button></div>
+        <div class="row start muted small" style="gap:6px"><span class="tag">אימות זהות</span>בקרוב: וי כחול למי שאימת תעודה</div></div>`}
     <p class="muted small" style="text-align:center">טיפ: הוסף את maagal למסך הבית מתפריט השיתוף של הדפדפן, והיא תיפתח כמו אפליקציה.</p>`, { tabs: 'profile' });
 }
 
@@ -486,12 +581,26 @@ document.addEventListener('click', async (e) => {
       case 'ob-sport': { const o = S.onboard.sports; S.onboard.sports = o.includes(v) ? o.filter((x) => x !== v) : [...o, v]; return renderOnboard(); }
       case 'ob-loc': await getLocation({ ask: true }); return renderOnboard();
       case 'ob-go': return finishOnboard(a);
+      case 'ob-mode': S.onboard.mode = v; return renderOnboard();
+      case 'google': return googleSignIn(false);
+      case 'link-google': return googleSignIn(true);
+      case 'show-save': S.showSave = true; return renderProfile();
+      case 'link-email': { const email = $('semail').value.trim(), password = $('spass').value; a.disabled = true;
+        const { error } = await sb.auth.updateUser({ email, password });
+        a.disabled = false; if (error) return toast(authError(error));
+        await sb.auth.refreshSession(); S.session = (await sb.auth.getSession()).data.session; S.showSave = false;
+        toast(isAnon() ? 'כמעט: אשר את המייל ששלחנו' : 'הפרופיל נשמר. אפשר להיכנס מכל מכשיר.'); return renderProfile(); }
+      case 'logout': if (!confirm('להתנתק?')) return; await sb.auth.signOut(); S.session = null; S.profile = null; S.onboard = { sports: [], mode: 'login' }; return go('#/');
       case 'loc': await getLocation({ ask: true }); if (!S.coords) toast('המיקום חסום. אפשר להפעיל בהגדרות הדפדפן.'); return route();
       case 'checkin': return doCheckin(v, a);
       case 'checkout': try { await rpc('check_out'); toast('יצאת מהמקום'); route(); } catch (err) { fail(err); } return;
       case 'new-circle': return startNewCircle(v);
+      case 'new-spot': return openNewSpotSheet();
+      case 'ns-kind': if (S.form?.newSpot && $('sheet').contains(a) && document.querySelector('[data-act="f-create"]')) { S.form.newSpot.kind = v; return renderSheet(); } S.ns.kind = v; return openNewSpotSheet();
+      case 'ns-save': { a.disabled = true; const id = await placeSpotHere(S.ns, null); a.disabled = false; if (!id) return; S.ns = null; closeSheet(); toast('סימנו אותך במקום החדש'); return go(`#/spot/${id}`); }
+      case 'f-newspot': S.form.newSpot = S.form.newSpot ? null : { name: '', kind: 'פארק' }; return renderSheet();
       case 'f-sport': S.form.sport = v; S.form.size = DEFAULT_SIZE[v] || 4; return renderSheet();
-      case 'f-spot': S.form.spot = v; return renderSheet();
+      case 'f-spot': S.form.spot = v; S.form.newSpot = null; return renderSheet();
       case 'f-size': S.form.size = Math.max(2, Math.min(12, S.form.size + Number(v))); return renderSheet();
       case 'f-open': S.form.open = v === '1'; return renderSheet();
       case 'f-when': S.form.label = v; return renderSheet();
@@ -534,11 +643,21 @@ document.addEventListener('submit', (e) => {
 // ---------- התחלה ----------
 (async function boot() {
   loading(); setTabs(null);
+  const qs = new URLSearchParams(location.search);
+  const oauthErr = qs.get('error_description');
   const { data } = await sb.auth.getSession();
   S.session = data.session;
+  if (location.search) history.replaceState(null, '', location.pathname + (ss.get('after') || location.hash || ''));
+  if (ss.get('nick')) S.onboard.nick = ss.get('nick');
+  try { if (ss.get('sports')) S.onboard.sports = JSON.parse(ss.get('sports')); } catch {}
+  ss.del('after'); ss.del('nick'); ss.del('sports');
+  if (oauthErr) setTimeout(() => toast(oauthErr.includes('already') ? 'החשבון הזה כבר מחובר לפרופיל אחר' : 'ההתחברות לא הצליחה. נסה שוב.'), 500);
   sb.auth.onAuthStateChange((_e, session) => { S.session = session; });
   if (S.session) {
     try { S.profile = await rpc('my_profile'); } catch (e) { console.error(e); }
+    if (!S.profile && !isAnon() && !S.onboard.nick) {
+      const m = S.session.user.user_metadata || {}; S.onboard.nick = (m.full_name || m.name || '').split(' ')[0].slice(0, 20);
+    }
   }
   if (store.get('loc') === '1') await getLocation({ ask: true });
   route();
