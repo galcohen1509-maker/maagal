@@ -45,6 +45,12 @@ const meters = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} ק״מ` : `${m} מ�
 const place = (sp) => (sp.kind === 'מגרש' && sp.name.includes(', ') ? sp.name.split(', ')[1] : sp.short);
 const statusClass = (s) => (s === 'בוער' ? 'b-hot' : s === 'מתחמם' ? 'b-warm' : 'b-quiet');
 const ring = (m) => `<div class="match" style="background:conic-gradient(var(--sun) ${Math.max(0, Math.min(100, m)) * 3.6}deg,var(--sand) 0)"><span>${m}%</span></div>`;
+const kmTo = (lat, lng) => { const c = S.coords; if (!c || lat == null) return null; const r = Math.PI / 180;
+  const a = Math.sin((lat - c.lat) * r / 2) ** 2 + Math.cos(c.lat * r) * Math.cos(lat * r) * Math.sin((lng - c.lng) * r / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(a)); };
+const navButtons = (lat, lng) => (lat == null ? '' : `<div class="chips">
+  <a class="btn line" style="flex:1" href="https://waze.com/ul?ll=${lat},${lng}&navigate=yes" target="_blank" rel="noopener">${I.pin} Waze</a>
+  <a class="btn line" style="flex:1" href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}" target="_blank" rel="noopener">${I.pin} מפות</a></div>`);
 const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 
 let toastT;
@@ -304,6 +310,7 @@ async function renderSpot(id) {
       <div class="stat"><b>${sp.crew_here.length}</b><span class="muted small">מהחבר'ה</span></div>
     </div>
     <div class="chips" style="gap:6px">${sp.sports.map((s) => `<span class="tag" style="background:var(--card)">${esc(s)}</span>`).join('')}</div>
+    ${navButtons(sp.lat, sp.lng)}
     <h2>מעגלים פתוחים</h2>
     ${(circles || []).length ? circles.map(circleCard).join('') + '<p class="muted small">האחוז = כמה המעגל מתאים לך: רמה, מרחק, חבר\'ה ואמינות המארגן.</p>'
       : `<div class="card"><p>אין פה מעגל פתוח כרגע.</p><button class="btn sun" style="min-height:48px;font-size:15px" data-act="new-circle" data-v="${esc(sp.id)}">תהיה הראשון להרים</button></div>`}
@@ -322,7 +329,9 @@ async function startNewCircle(spotId) {
   const firstSport = (S.profile?.sports || []).find((s) => SPORTS.includes(s)) || SPORTS[0];
   const spot = spotId || here?.id || S.spots.find((s) => s.sports.includes(firstSport))?.id || S.spots[0]?.id;
   const sport = S.spots.find((s) => s.id === spot)?.sports.includes(firstSport) ? firstSport : (S.spots.find((s) => s.id === spot)?.sports[0] || firstSport);
-  S.form = { spot, sport, size: DEFAULT_SIZE[sport] || 4, label: 'עכשיו', open: false, court: '' };
+  // אין מקום מוכר לידך: ברירת המחדל היא לפתוח איפה שאתה עומד
+  const farFromAll = S.coords && !spotId && !here && !(S.spots[0]?.km != null && S.spots[0].km <= 0.3);
+  S.form = { spot, sport, size: DEFAULT_SIZE[sport] || 4, label: 'עכשיו', open: false, court: '', newSpot: farFromAll ? { name: '', kind: 'פארק' } : null };
   renderSheet();
 }
 function renderSheet() {
@@ -332,10 +341,10 @@ function renderSheet() {
   const sp = f.newSpot ? null : S.spots.find((s) => s.id === f.spot);
   const court = COURT_SPORTS.includes(f.sport);
   openSheet(`
-    <h1 style="font-size:26px">מרים מעגל${sp ? ` ב${esc(place(sp))}` : f.newSpot?.name ? ` ב${esc(f.newSpot.name)}` : ''}</h1>
+    <h1 style="font-size:26px">מרים מעגל${sp ? ` ב${esc(place(sp))}` : f.newSpot ? ' איפה שאתה עומד' : ''}</h1>
     <div><h3 style="margin-bottom:8px">משחקים</h3><div class="chips">${SPORTS.map((s) => `<button class="chip ${f.sport === s ? 'on' : ''}" data-act="f-sport" data-v="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>
     <div><h3 style="margin-bottom:8px">איפה</h3><div class="chips">${spotsFor.slice(0, 6).map((s) => `<button class="chip sm ${!f.newSpot && f.spot === s.id ? 'on' : ''}" data-act="f-spot" data-v="${esc(s.id)}">${esc(s.short)}${s.minutes != null ? ` · ${s.minutes} דק׳` : ''}</button>`).join('')}
-      <button class="chip sm ${f.newSpot ? 'on' : ''}" data-act="f-newspot">${I.pin} מקום חדש כאן</button></div>
+      <button class="chip sm ${f.newSpot ? 'on' : ''}" data-act="f-newspot">${I.pin} איפה שאני עומד</button></div>
       ${f.newSpot ? newSpotFields(f.newSpot) : ''}</div>
     <div class="row"><div><h3>כמה חסרים?</h3><div class="muted small">סה״כ ${f.size} במגרש, כולל אותך</div></div>
       <div class="stepper"><button class="round" data-act="f-size" data-v="-1" aria-label="פחות">−</button><b style="font-size:24px">${f.size - 1}</b><button class="round on" data-act="f-size" data-v="1" aria-label="יותר">+</button></div></div>
@@ -353,16 +362,18 @@ function renderSheet() {
 }
 function newSpotFields(ns) {
   return `<div class="card" style="background:var(--sand);margin-top:10px;gap:8px">
-    <label for="nsname" class="small"><b>איך קוראים למקום?</b></label>
+    <label for="nsname" class="small"><b>איך קוראים למקום?</b> <span class="muted">(לא חובה)</span></label>
     <input id="nsname" class="field" maxlength="30" placeholder="למשל: גינת הכלנית, מגרש הדשא ליד הבית" value="${esc(ns.name || '')}">
     <div class="chips">${KINDS.map((k) => `<button class="chip sm ${ns.kind === k ? 'on' : ''}" data-act="ns-kind" data-v="${esc(k)}">${esc(k)}</button>`).join('')}</div>
-    <p class="muted small">המקום נוצר לפי המיקום שלך עכשיו, אז צריך להיות שם. אם כבר יש מקום ממש קרוב, נשתמש בו.</p></div>`;
+    <p class="muted small">הנקודה נקבעת לפי המיקום שלך עכשיו. מי שבסביבה יראה אותה ויוכל לנווט אליה. אם כבר יש מקום ממש קרוב, נשתמש בו.</p></div>`;
 }
 async function placeSpotHere(ns, sport) {
-  if ((ns.name || '').trim().length < 2) { toast('תן שם למקום, לפחות 2 אותיות'); return null; }
+  let name = (ns.name || '').trim();
+  if (name.length === 1) { toast('שם של לפחות 2 אותיות, או בלי שם בכלל'); return null; }
+  if (!name) name = `הנקודה של ${S.profile?.nickname || 'שחקן'}`.slice(0, 30);
   const c = await getLocation({ ask: true });
   if (!c) { toast('צריך מיקום כדי ליצור מקום. אפשר להפעיל בהגדרות הדפדפן.'); return null; }
-  const r = await rpc('add_spot', { p_name: ns.name.trim(), p_kind: ns.kind || 'פארק', p_sports: sport ? [sport] : (S.profile?.sports || []), p_lat: c.lat, p_lng: c.lng });
+  const r = await rpc('add_spot', { p_name: name, p_kind: ns.kind || 'פארק', p_sports: sport ? [sport] : (S.profile?.sports || []), p_lat: c.lat, p_lng: c.lng });
   if (!r.ok) { toast(r.reason === 'limit' ? 'הגעת למגבלה של 5 מקומות חדשים היום' : 'תן שם למקום, לפחות 2 אותיות'); return null; }
   if (r.existing) toast(`כבר יש פה מקום: ${r.name}. השתמשנו בו.`);
   return r.id;
@@ -434,6 +445,9 @@ function drawCircle(keepScroll) {
     <h1>${esc(c.sport)} ב${esc(place(c.spot))}</h1>
     ${c.court_info ? `<div class="banner sea" style="padding:10px 14px">${esc(c.court_info)}</div>` : ''}
     <p class="muted">${esc(c.starts_label)} · ${c.open_to_all ? 'פתוח לכולם' : 'בערך באותה רמה'} · ${c.status === 'open' ? `חסרים עוד ${missing}` : `${n} שחקנים`}</p>
+    ${['open', 'full'].includes(c.status) && c.spot.lat != null ? `<div class="card" style="gap:8px">
+      <div class="row"><b>איך מגיעים</b>${kmTo(c.spot.lat, c.spot.lng) != null ? `<span class="muted small">${meters(Math.round(kmTo(c.spot.lat, c.spot.lng) * 1000))} ממך</span>` : ''}</div>
+      ${navButtons(c.spot.lat, c.spot.lng)}</div>` : ''}
     <div class="card">${c.members.map((m) => `<div class="row start"><div class="avatar">${initials(m.nickname)}</div>
         <div style="flex:1;font-weight:500">${esc(m.nickname)}${m.id === me ? ' (אתה)' : ''}${m.level ? ` <span class="tag lvl">${esc(m.level)}</span>` : ''}</div>
         <span class="muted small">${m.is_organizer ? 'מארגן' : 'בפנים'}</span></div>`).join('')}
