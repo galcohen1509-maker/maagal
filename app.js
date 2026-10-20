@@ -155,7 +155,7 @@ function renderOnboard() {
       <div class="chips">${SPORTS.map((s) => `<button class="chip pill ${o.sports.includes(s) ? 'on' : ''}" data-act="ob-sport" data-v="${esc(s)}" aria-pressed="${o.sports.includes(s)}">${esc(s)}</button>`).join('')}</div>
     </div>
     <div class="card">
-      <div class="row start">${I.pin}<div style="flex:1"><b>מיקום</b><div class="muted small">כדי להראות מה קרוב ולאמת "אני פה". שומרים רק באיזה חוף אתה, אף פעם לא מיקום מדויק.</div></div></div>
+      <div class="row start">${I.pin}<div style="flex:1"><b>מיקום</b><div class="muted small">נצטרך את המיקום המדויק שלך בשביל לדעת לאילו מקומות ומעגלים אתה קרוב.</div></div></div>
       <button class="btn line ${S.locState === 'ok' ? 'on' : ''}" data-act="ob-loc">${S.locState === 'ok' ? 'המיקום פועל' : S.locState === 'denied' ? 'המיקום חסום. אפשר להפעיל בהגדרות הדפדפן' : 'אפשר מיקום'}</button>
     </div>
     <p class="muted small">הרמה שלך? נגלה במגרש. אחרי 3 משחקים עם דירוגים מכל הצדדים, תקבל רמה אמיתית.</p>`}
