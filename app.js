@@ -397,6 +397,12 @@ async function createCircle(btn) {
 }
 
 // ---------- מעגל ----------
+async function copyLink(url) {
+  try { await navigator.clipboard.writeText(url); }
+  catch { const t = document.createElement('textarea'); t.value = url; document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); } catch {} t.remove(); }
+  toast('הלינק הועתק. אפשר להדביק בכל מקום.');
+}
 function inviteUrl(id) { return `${location.origin}${location.pathname}#/c/${id}`; }
 async function invite(c) {
   const url = inviteUrl(c.id);
@@ -456,6 +462,7 @@ function drawCircle(keepScroll) {
     ${c.i_am_in && c.status !== 'cancelled' ? `<div class="card"><h3>צ'אט המעגל</h3><div class="feed" id="feed"></div>
       <div class="chips">${['אני 5 דק׳ מפה', 'איפה אתם בדיוק?', 'יש לי כדור', 'תחכו לי'].map((q) => `<button class="chip sm" data-act="say" data-v="${esc(q)}">${esc(q)}</button>`).join('')}</div>
       <form class="sendrow" data-form="chat"><input class="field" id="chatin" maxlength="300" placeholder="הודעה..." aria-label="הודעה"><button type="submit">שלח</button></form></div>` : ''}
+    ${['open', 'full'].includes(c.status) ? `<button class="btn line" data-act="copy-link" data-v="${esc(inviteUrl(c.id))}">${I.share} העתק לינק למעגל</button>` : ''}
     ${c.i_am_in && ['open', 'full'].includes(c.status) ? `<button class="linkbtn mute" data-act="leave" style="align-self:center">${isOrg ? 'בטל את המעגל' : 'יצאתי מהמעגל'}</button>` : ''}
     <div class="bottom low">${actions}</div>`);
   drawChat();
@@ -535,7 +542,9 @@ async function renderCrew() {
     <div class="card"><h3>מי רואה אותך במקום?</h3>
       <div class="seg">${[['all', 'כולם'], ['crew', "רק החבר'ה"], ['none', 'אף אחד']].map(([v, l]) => `<button class="${S.profile.visibility === v ? 'on' : ''}" data-act="vis" data-v="${v}">${l}</button>`).join('')}</div>
       <p class="muted small">${{ all: 'רואים את השם שלך רק החבר\'ה שלך. כל השאר רואים רק את מספר השחקנים.', crew: 'רק החבר\'ה שלך יראו שאתה במקום. כולם יראו רק את מספר השחקנים.', none: 'אף אחד לא יראה אותך. עדיין תיספר במספר השחקנים.' }[S.profile.visibility]}</p>
-    </div>`, { tabs: 'crew' });
+    </div>
+    <div class="card"><h3>להביא את החבר'ה</h3><p class="muted small">שלח להם את הלינק לאפליקציה. נכנסים עם כינוי, בלי הרשמה.</p>
+      <button class="btn line" data-act="copy-link" data-v="${esc(SITE)}">${I.share} העתק לינק לאפליקציה</button></div>`, { tabs: 'crew' });
 }
 
 // ---------- פרופיל ----------
@@ -626,6 +635,7 @@ document.addEventListener('click', async (e) => {
           toast('אתה בפנים. המארגן רואה שהצטרפת.'); return route();
         } catch (err) { a.disabled = false; return fail(err); } }
       case 'invite': return invite(S.circle);
+      case 'copy-link': return copyLink(v);
       case 'finish': if (!confirm('לסגור את המשחק ולעבור לדירוג?')) return; try { await rpc('finish_circle', { p_circle: S.circle.id }); go(`#/rate/${S.circle.id}`); } catch (err) { fail(err); } return;
       case 'leave': if (!confirm(S.circle.organizer === S.session.user.id ? 'לבטל את המעגל לכולם?' : 'לצאת מהמעגל?')) return;
         try { await rpc('leave_circle', { p_circle: S.circle.id }); go('#/'); } catch (err) { fail(err); } return;
