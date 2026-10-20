@@ -4,12 +4,15 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const SUPABASE_URL = 'https://fckpmdhcqbotnluflzpw.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_eG2bmu0PIEFFNu93ndOiqw_NA-K6nhB'; // מפתח ציבורי, מוגן ע"י הרשאות בשרת
 
-const SPORTS = ["פוצ'יוולי", 'מטקות', 'כדורעף', 'פאדל', 'טניס'];
-const DEFAULT_SIZE = { "פוצ'יוולי": 4, 'מטקות': 2, 'כדורעף': 6, 'פאדל': 4, 'טניס': 2 };
+const SPORTS = ['הקפצות', "פוצ'יוולי"]; // הקפצות: בכל מקום. פוצ'יוולי: רק במקום עם רשת
+const DEFAULT_SIZE = { 'הקפצות': 4, "פוצ'יוולי": 4 };
+const SPORT_LABEL = { 'הקפצות': 'מעגל הקפצות', "פוצ'יוולי": "פוצ'יוולי" };
+const NET = "פוצ'יוולי";
+const MAX_SIZE = 4; // מעגל אידיאלי: 4. חסרים 1, 2 או 3
 const COURT_SPORTS = ['פאדל', 'טניס'];
 const LEVELS = ['מתחיל', 'מתחמם', 'סולידי', 'חזק', 'מפלצת'];
 const TAGS = ['אווירה טובה', 'משחק הוגן', 'דיוק בזמנים'];
-const KINDS = ['פארק', 'חוף', 'מגרש', 'אחר'];
+const KINDS = ['חוף', 'חול', 'דשא', 'אספלט', 'מגרש', 'פארק', 'אחר'];
 const WHEN = ['עכשיו', 'עוד חצי שעה', 'בשקיעה'];
 
 const SITE = 'https://galcohen1509-maker.github.io/maagal/';
@@ -45,6 +48,9 @@ const meters = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} ק״מ` : `${m} מ�
 const place = (sp) => (sp.kind === 'מגרש' && sp.name.includes(', ') ? sp.name.split(', ')[1] : sp.short);
 const statusClass = (s) => (s === 'בוער' ? 'b-hot' : s === 'מתחמם' ? 'b-warm' : 'b-quiet');
 const ring = (m) => `<div class="match" style="background:conic-gradient(var(--sun) ${Math.max(0, Math.min(100, m)) * 3.6}deg,var(--sand) 0)"><span>${m}%</span></div>`;
+const stars = (n) => `<span class="stars" aria-label="${n} כוכבים">${'★'.repeat(n)}<span style="opacity:.25">${'★'.repeat(Math.max(0, 5 - n))}</span></span>`;
+const myLevel = () => { const l = (S.profile?.levels || []).find((x) => x.sport === SPORTS[0] && x.confirmed); return l ? Number(l.level) : 3; };
+const levelPref = () => store.get('lvlpref') || 'any';
 const kmTo = (lat, lng) => { const c = S.coords; if (!c || lat == null) return null; const r = Math.PI / 180;
   const a = Math.sin((lat - c.lat) * r / 2) ** 2 + Math.cos(c.lat * r) * Math.cos(lat * r) * Math.sin((lng - c.lng) * r / 2) ** 2;
   return 12742 * Math.asin(Math.sqrt(a)); };
@@ -62,7 +68,8 @@ async function rpc(fn, args = {}) {
   return data;
 }
 function fail(e) { console.error(e); const m = e?.message || '';
-  toast(m.includes('banned') ? 'החשבון שלך חסום. לפרטים פנה אלינו.' : m.includes('admin only') ? 'אין לך הרשאה לזה' : 'משהו השתבש. בדוק חיבור ונסה שוב.'); }
+  toast(m.includes('banned') ? 'החשבון שלך חסום. לפרטים פנה אלינו.' : m.includes('admin only') ? 'אין לך הרשאה לזה'
+    : m.includes('no net here') ? "במקום הזה אין רשת. פוצ'יוולי רק במקום עם רשת." : 'משהו השתבש. בדוק חיבור ונסה שוב.'); }
 
 const I = {
   sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -71,6 +78,8 @@ const I = {
   pin: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>',
   share: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>',
   google: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.6 12.2c0-.8-.1-1.5-.2-2.2H12v4.2h5.9a5 5 0 0 1-2.2 3.3v2.7h3.6c2.1-1.9 3.3-4.8 3.3-8z"/><path fill="#34A853" d="M12 23c3 0 5.5-1 7.3-2.7l-3.6-2.8c-1 .7-2.2 1.1-3.7 1.1-2.9 0-5.3-1.9-6.2-4.5H2.1v2.8A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.8 14.1a6.6 6.6 0 0 1 0-4.2V7.1H2.1a11 11 0 0 0 0 9.8z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3 .6 4.2 1.6l3.1-3.1A11 11 0 0 0 2.1 7.1l3.7 2.8C6.7 7.3 9.1 5.4 12 5.4z"/></svg>',
+  trophy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>',
+  ball: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3.5 9c4 1 7 4 8.5 12M20.5 9c-4 1-7 4-8.5 12M12 3c-1.5 3-1.5 6 0 9"/></svg>',
   lock: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
 };
 
@@ -99,7 +108,7 @@ function setTabs(active) {
   if (!active) { tb.classList.add('hide'); return; }
   tb.classList.remove('hide');
   const pend = S.pending.length;
-  tb.innerHTML = [['home', 'אקשן', I.sun, '#/'], ['crew', "החבר'ה", I.crew, '#/crew'], ['profile', 'פרופיל', I.me, '#/me']]
+  tb.innerHTML = [['home', 'מעגלים', I.sun, '#/'], ['players', 'שחקנים', I.ball, '#/players'], ['top', 'טבלה', I.trophy, '#/top'], ['crew', "החבר'ה", I.crew, '#/crew'], ['profile', 'פרופיל', I.me, '#/me']]
     .map(([id, l, ic, h]) => `<button class="tab ${active === id ? 'on' : ''}" data-go="${h}" aria-label="${l}">${ic}<span>${l}</span>${id === 'profile' && pend ? `<b class="cnt">${pend}</b>` : ''}</button>`).join('');
 }
 function screen(html, { tabs = null } = {}) {
@@ -121,6 +130,8 @@ async function route() {
   if (a === 'rate' && b) return renderRate(b);
   if (a === 'spot' && b) return renderSpot(b);
   if (a === 'crew') return renderCrew();
+  if (a === 'players') return renderPlayers();
+  if (a === 'top') return renderTop();
   if (a === 'me') return renderProfile();
   if (a === 'admin' && S.isAdmin) return renderAdmin();
   return renderHome();
@@ -145,16 +156,12 @@ function renderOnboard() {
   screen(`
     <div class="row"><div class="brand">maagal</div></div>
     <h1>${login ? 'ברוך השב' : 'בא לך לשחק עכשיו?<br>יש מעגל שמחכה לך.'}</h1>
-    ${login ? '' : '<p class="muted" style="font-size:16px">רואים מי בחוף ובמגרש, קופצים, משחקים. בלי טפסים ובלי מבחני רמה.</p>'}
+    ${login ? '' : '<p class="muted" style="font-size:16px">מעגלי הקפצות לידך, עכשיו. חסרים 1, 2 או 3? מוצאים אותם כאן, ברמה שלך או פתוח לכולם.</p>'}
     ${acct}
     ${login ? '' : `
     <div class="card">
       <label for="nick"><h2>איך קוראים לך בחוף?</h2></label>
       <input id="nick" class="field" maxlength="20" autocomplete="nickname" placeholder="כינוי, 2–20 אותיות" value="${esc(o.nick || '')}">
-    </div>
-    <div class="card">
-      <h2>מה אתה משחק?</h2>
-      <div class="chips">${SPORTS.map((s) => `<button class="chip pill ${o.sports.includes(s) ? 'on' : ''}" data-act="ob-sport" data-v="${esc(s)}" aria-pressed="${o.sports.includes(s)}">${esc(s)}</button>`).join('')}</div>
     </div>
     <div class="card">
       <div class="row start">${I.pin}<div style="flex:1"><b>מיקום</b><div class="muted small">נצטרך את המיקום המדויק שלך בשביל לדעת לאילו מקומות ומעגלים אתה קרוב.</div></div></div>
@@ -201,7 +208,8 @@ async function finishOnboard(btn) {
           S.session = data.session;
         }
       }
-      await rpc('save_profile', { p_nickname: nick, p_sports: o.sports });
+      try { await rpc('save_profile', { p_nickname: nick, p_sports: SPORTS }); }
+      catch (e) { if ((e?.message || '').includes('nickname taken')) { btn.disabled = false; toast('הכינוי הזה תפוס. נסה אחר.'); $('nick')?.focus(); return; } throw e; }
       S.profile = await rpc('my_profile');
     }
     const target = S.after && S.after !== '#/' ? S.after : '#/';
@@ -218,6 +226,7 @@ async function loadHome() {
     rpc('pending_ratings'),
   ]);
   S.spots = spots || []; S.circles = circles || []; S.pending = pending || [];
+  try { S.matches = (await rpc('my_matches')) || []; } catch { S.matches = []; }
 }
 
 function spotCard(sp) {
@@ -245,7 +254,8 @@ async function renderHome() {
   if (!S.spots.length) loading();
   try { await loadHome(); } catch (e) { return fail(e); }
   const mine = S.circles.filter((c) => c.i_am_in);
-  const forMe = S.circles.filter((c) => !c.i_am_in && c.status === 'open');
+  const pref = levelPref(); const lvl = myLevel();
+  const forMe = S.circles.filter((c) => !c.i_am_in && c.status === 'open' && (pref !== 'mine' || c.avg_level == null || Math.abs(Number(c.avg_level) - lvl) <= 1));
   const crewSeen = S.spots.filter((s) => s.crew_here.length);
   const near = S.spots[0];
   screen(`
@@ -258,7 +268,9 @@ async function renderHome() {
     ${S.pending.length ? `<div class="banner"><span><b>איך היה ב${esc(S.pending[0].spot_short)}?</b> 10 שניות לדרג</span><button class="chip sm on" data-go="#/rate/${S.pending[0].id}">לדרג</button></div>` : ''}
     ${crewSeen.map((s) => `<div class="banner"><span><b>${s.crew_here.map(esc).join(' ו')}</b> ב${esc(s.short)} עכשיו</span></div>`).join('')}
     ${mine.length ? `<h2>המעגלים שלך</h2>${mine.map(circleCard).join('')}` : ''}
+    ${(S.matches || []).filter((m) => m.circle).map((m) => `<div class="banner sea"><span><b>יש התאמה עם ${esc(m.nickname)}!</b> המעגל שלכם פתוח</span><button class="chip sm on" data-go="#/c/${m.circle}">למעגל</button></div>`).join('')}
     <div class="row"><h2>מעגלים פתוחים בשבילך</h2><span class="muted small">לפי התאמה</span></div>
+    <div class="seg">${[['any', 'כולם'], ['mine', 'רק ברמה שלי']].map(([v, l]) => `<button class="${pref === v ? 'on' : ''}" data-act="lvlpref" data-v="${v}">${l}</button>`).join('')}</div>
     ${forMe.length ? forMe.slice(0, 5).map(circleCard).join('') : `<div class="card"><p>אין כרגע מעגל פתוח. תהיה הראשון להרים, החבר'ה יראו את זה.</p></div>`}
     <h2>מקומות</h2>
     ${S.spots.map(spotCard).join('')}
@@ -328,25 +340,27 @@ $('backdrop').addEventListener('click', closeSheet);
 async function startNewCircle(spotId) {
   if (!S.spots.length) { try { await loadHome(); } catch (e) { return fail(e); } }
   const here = S.spots.find((s) => s.i_am_here);
-  const firstSport = (S.profile?.sports || []).find((s) => SPORTS.includes(s)) || SPORTS[0];
-  const spot = spotId || here?.id || S.spots.find((s) => s.sports.includes(firstSport))?.id || S.spots[0]?.id;
-  const sport = S.spots.find((s) => s.id === spot)?.sports.includes(firstSport) ? firstSport : (S.spots.find((s) => s.id === spot)?.sports[0] || firstSport);
-  S.form = { spot, sport, size: DEFAULT_SIZE[sport] || 4, label: 'עכשיו', open: false, court: '', newSpot: null };
+  const spot = spotId || here?.id || S.spots[0]?.id;
+  S.form = { spot, sport: SPORTS[0], size: MAX_SIZE, label: 'עכשיו', open: false, court: '', newSpot: null };
   renderSheet();
 }
 function renderSheet() {
   const f = S.form;
-  const spotsFor = S.spots.filter((s) => s.sports.includes(f.sport) || !s.sports.length || s.id === f.spot);
+  const net = f.sport === NET;
+  if (net) f.newSpot = null; // מקום חדש עוד לא מסומן עם רשת
+  const spotsFor = net ? S.spots.filter((s) => s.sports.includes(NET)) : S.spots;
   if (!spotsFor.find((s) => s.id === f.spot)) f.spot = spotsFor[0]?.id;
-  const sp = f.newSpot ? null : S.spots.find((s) => s.id === f.spot);
+  const sp = f.newSpot ? null : spotsFor.find((s) => s.id === f.spot);
   const court = COURT_SPORTS.includes(f.sport);
   openSheet(`
-    <h1 style="font-size:26px">מרים מעגל${sp ? ` ב${esc(place(sp))}` : f.newSpot ? (S.isAdmin ? ' איפה שאתה עומד' : ' במקום חדש') : ''}</h1>
-    <div><h3 style="margin-bottom:8px">משחקים</h3><div class="chips">${SPORTS.map((s) => `<button class="chip ${f.sport === s ? 'on' : ''}" data-act="f-sport" data-v="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>
+    <h1 style="font-size:26px">${net ? "פוצ'יוולי" : 'מרים מעגל'}${sp ? ` ב${esc(place(sp))}` : f.newSpot ? (S.isAdmin ? ' איפה שאתה עומד' : ' במקום חדש') : ''}</h1>
+    <div class="seg">${SPORTS.map((s) => `<button class="${f.sport === s ? 'on' : ''}" data-act="f-sport" data-v="${esc(s)}">${esc(SPORT_LABEL[s] || s)}</button>`).join('')}</div>
+    <p class="muted small" style="margin-top:-6px">${net ? 'רק במקומות עם רשת.' : 'בכל מקום: חוף, חול, דשא, אספלט או מגרש.'}</p>
+    ${net && !spotsFor.length ? '<p class="small">אין כרגע מקום עם רשת ברשימה. אפשר לפתוח מעגל הקפצות.</p>' : ''}
     <div><h3 style="margin-bottom:8px">איפה</h3><div class="chips">${spotsFor.slice(0, 6).map((s) => `<button class="chip sm ${!f.newSpot && f.spot === s.id ? 'on' : ''}" data-act="f-spot" data-v="${esc(s.id)}">${esc(s.short)}${s.minutes != null ? ` · ${s.minutes} דק׳` : ''}</button>`).join('')}
-      <button class="chip sm ${f.newSpot ? 'on' : ''}" data-act="f-newspot">${I.pin} ${S.isAdmin ? 'איפה שאני עומד' : 'מקום חדש (באישור)'}</button></div>
+      ${net ? '' : `<button class="chip sm ${f.newSpot ? 'on' : ''}" data-act="f-newspot">${I.pin} ${S.isAdmin ? 'איפה שאני עומד' : 'מקום חדש (באישור)'}</button>`}</div>
       ${f.newSpot ? newSpotFields(f.newSpot) : ''}</div>
-    <div class="row"><div><h3>כמה חסרים?</h3><div class="muted small">סה״כ ${f.size} במגרש, כולל אותך</div></div>
+    <div class="row"><div><h3>כמה חסרים?</h3><div class="muted small">סה״כ ${f.size} במעגל, כולל אותך. האידיאל: 4</div></div>
       <div class="stepper"><button class="round" data-act="f-size" data-v="-1" aria-label="פחות">−</button><b style="font-size:24px">${f.size - 1}</b><button class="round on" data-act="f-size" data-v="1" aria-label="יותר">+</button></div></div>
     <div><h3 style="margin-bottom:8px">מי מוזמן?</h3><div class="chips">
       <button class="chip ${!f.open ? 'on' : ''}" style="flex:1" data-act="f-open" data-v="0">בערך ברמה שלי</button>
@@ -551,6 +565,73 @@ async function renderCrew() {
 }
 
 // ---------- פרופיל ----------
+// ---------- שחקנים: "זמין להקפיץ עכשיו" + התאמה הדדית ----------
+async function renderPlayers() {
+  loading();
+  const pref = levelPref();
+  let av = null, deck = [], matches = [];
+  try { [av, matches] = await Promise.all([rpc('my_availability'), rpc('my_matches')]); } catch (e) { return fail(e); }
+  const on = !!av?.on;
+  if (on && S.coords) { try { deck = (await rpc('nearby_players', { p_lat: S.coords.lat, p_lng: S.coords.lng, p_pref: pref })) || []; } catch (e) { return fail(e); } }
+  S.deck = deck;
+  const p = deck[0];
+  screen(`
+    <h1>שחקנים באזור</h1>
+    <p class="muted">מסמנים "זמין להקפיץ", רואים מי עוד זמין לידך, ולוחצים "בוא נקפיץ". אם שניכם לחצתם, נפתח לכם מעגל וצ'אט.</p>
+    ${(matches || []).map((m) => `<div class="banner sea"><span><b>יש התאמה עם ${esc(m.nickname)}!</b> ${m.circle ? 'המעגל שלכם פתוח' : 'אין מקום מאושר קרוב'}</span>${m.circle ? `<button class="chip sm on" data-go="#/c/${m.circle}">למעגל</button>` : ''}</div>`).join('')}
+    <div class="card">
+      <div class="row"><div><b>${on ? 'אתה זמין להקפיץ' : 'זמין להקפיץ עכשיו?'}</b><div class="muted small">${on ? `עד ${new Date(av.until).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}. רואים רק מרחק בערך, לא איפה אתה.` : 'שחקנים באזור יראו אותך לשעתיים.'}</div></div>
+        <button class="chip ${on ? 'on' : ''}" data-act="avail" data-v="${on ? '0' : '1'}">${on ? 'כבה' : 'הדלק'}</button></div>
+      <div class="seg">${[['any', 'כולם'], ['mine', 'רק ברמה שלי']].map(([v, l]) => `<button class="${pref === v ? 'on' : ''}" data-act="lvlpref" data-v="${v}">${l}</button>`).join('')}</div>
+    </div>
+    ${!on ? '' : !S.coords ? `<div class="card"><p>צריך מיקום כדי לראות מי לידך.</p><button class="btn line" data-act="loc">הפעל מיקום</button></div>`
+      : p ? `<div class="deck">
+          <div class="avatar">${initials(p.nickname)}</div>
+          <h2 style="font-size:24px">${esc(p.nickname)}</h2>
+          <div>${p.stars ? `${stars(p.stars)} <span class="muted small">${esc(p.level_label || '')}</span>` : '<span class="tag">עוד בלי רמה</span>'}</div>
+          <div class="muted small">${p.games} משחקים · ${p.points} נקודות · ${p.km} ק״מ ממך</div>
+          <div class="chips" style="width:100%;margin-top:8px">
+            <button class="btn mute" style="flex:1" data-act="swipe" data-v="${p.id}:0">דלג</button>
+            <button class="btn sun" style="flex:2" data-act="swipe" data-v="${p.id}:1">בוא נקפיץ</button></div>
+          ${deck.length > 1 ? `<div class="muted small">עוד ${deck.length - 1} זמינים באזור</div>` : ''}</div>`
+      : `<div class="card"><p>כרגע אין עוד שחקנים זמינים לידך${pref === 'mine' ? ' ברמה שלך' : ''}.</p><p class="muted small">נסה "כולם", או פתח מעגל וחכה שיצטרפו.</p>
+          <button class="btn sun" data-act="new-circle">מרים מעגל</button></div>`}`, { tabs: 'players' });
+  clearTimeout(S.playersT);
+  S.playersT = setTimeout(() => { if (location.hash === '#/players' && !$('app').classList.contains('open')) renderPlayers(); }, 60000);
+}
+async function doSwipe(v, btn) {
+  const [id, like] = v.split(':'); btn.disabled = true;
+  try {
+    const r = await rpc('swipe', { p_to: id, p_like: like === '1' });
+    if (r.match) {
+      if (r.circle) { toast(`התאמה! נפתח לכם מעגל ב${r.spot}`); return go(`#/c/${r.circle}`); }
+      toast('התאמה! אין מקום מאושר קרוב, אז פתחו מעגל במקום שנוח לכם.');
+    } else if (r.reason === 'gone') toast('השחקן כבר לא זמין');
+    else if (like === '1') toast('שלחנו. אם גם הוא ילחץ, נפתח לכם מעגל.');
+    renderPlayers();
+  } catch (e) { btn.disabled = false; fail(e); }
+}
+
+// ---------- טבלה ארצית ----------
+async function renderTop() {
+  loading();
+  let d; try { d = await rpc('leaderboard', { p_limit: 100 }); } catch (e) { return fail(e); }
+  const me = d.me;
+  screen(`
+    <h1>הטובים בארץ</h1>
+    <p class="muted">נקודות מכל דירוג טוב אחרי מעגל שקרה באמת. מאותו שחקן נספר רק הדירוג הכי טוב בחודש.</p>
+    ${me ? `<div class="card"><div class="row"><div><b>${me.rank ? `אתה במקום ${me.rank}` : 'עוד לא בטבלה'}</b><div class="muted small">${me.points} נקודות · יתרה ${me.balance}</div></div>${me.stars ? stars(me.stars) : ''}</div></div>` : ''}
+    <div class="card">${d.top.length ? d.top.map((r) => `<div class="rank ${r.me ? 'me' : ''}"><b class="n">${r.rank}</b>
+        <div><b>${esc(r.nickname)}</b><div class="muted small">${r.stars ? stars(r.stars) + ' · ' : ''}${r.games} משחקים</div></div>
+        <b>${r.points}</b></div>`).join('') : '<p class="muted">הטבלה עוד ריקה. המעגל הראשון שמדורג פותח אותה.</p>'}</div>
+    <details class="card"><summary style="font-weight:700;cursor:pointer;min-height:32px">איך צוברים נקודות?</summary>
+      <ul style="margin:8px 0 0;padding-inline-start:18px;font-size:13px;line-height:1.7;color:var(--muted)">
+        <li>אחרי כל מעגל, השחקנים מדרגים אחד את השני.</li>
+        <li>"מפלצת" = 3 נקודות, "חזק" = 2, "סולידי" = 1. "בא לי עוד משחק ביחד" = עוד נקודה.</li>
+        <li>נספר רק מעגל שכולם אישרו שקרה, ורק אחרי שהדירוגים נחשפו.</li>
+        <li>הנקודות נשמרות ביתרה. בקרוב יהיה אפשר להשתמש בהן.</li></ul></details>`, { tabs: 'top' });
+}
+
 // ---------- ניהול (רק לבעלים. השרת בודק הרשאה בכל פעולה) ----------
 const mapLink = (lat, lng) => `https://www.google.com/maps?q=${lat},${lng}`;
 async function renderAdmin(keepScroll) {
@@ -592,6 +673,7 @@ async function renderAdmin(keepScroll) {
         <div class="chips"><button class="chip sm" data-act="a-rename" data-v="${esc(s.id)}">שנה שם</button>
           <button class="chip sm" data-act="a-here" data-v="${esc(s.id)}">${I.pin} העבר למיקום שלי</button>
           <button class="chip sm" data-act="a-radius" data-v="${esc(s.id)}">רדיוס</button>
+          <button class="chip sm ${(s.sports || []).includes(NET) ? 'on' : ''}" data-act="a-net" data-v="${esc(s.id)}">${(s.sports || []).includes(NET) ? 'יש רשת' : 'אין רשת'}</button>
           ${s.circles ? '' : `<button class="chip sm" data-act="a-del" data-v="${esc(s.id)}">מחק</button>`}</div></div>`).join(line))}
 
     ${sec('מעגלים פתוחים עכשיו', d.circles.length, d.circles.length ? d.circles.map((c) => `<div class="row">
@@ -646,25 +728,30 @@ async function adminAdd(btn) {
 }
 async function adminEditSpot(id, what) {
   const s = S.admin.spots.find((x) => x.id === id); if (!s) return;
-  let { name, lat, lng, radius_m: radius } = s;
+  let { name, lat, lng, radius_m: radius } = s; let sports = null;
+  if (what === 'net') sports = (s.sports || []).includes(NET) ? [SPORTS[0]] : [SPORTS[0], NET];
   if (what === 'name') { const v = prompt('שם חדש למקום', name); if (!v || v.trim().length < 2) return; name = v.trim(); }
   if (what === 'radius') { const v = Number(prompt('רדיוס "אני פה" במטרים (50 עד 2000)', radius)); if (!v) return; radius = v; }
   if (what === 'here') {
     const c = await getLocation({ ask: true }); if (!c) return toast('צריך מיקום');
     if (!confirm(`להעביר את "${name}" למיקום שלך עכשיו?`)) return; lat = c.lat; lng = c.lng;
   }
-  return adminDo('admin_save_spot', { p_id: id, p_name: name, p_kind: s.kind, p_lat: lat, p_lng: lng, p_radius: radius, p_sports: null }, 'נשמר');
+  return adminDo('admin_save_spot', { p_id: id, p_name: name, p_kind: s.kind, p_lat: lat, p_lng: lng, p_radius: radius, p_sports: sports }, 'נשמר');
 }
 
 async function renderProfile() {
   loading();
   try { await rpc('refresh_my_levels'); S.profile = await rpc('my_profile'); S.pending = (await rpc('pending_ratings')) || []; } catch (e) { return fail(e); }
+  let me = null; try { me = (await rpc('leaderboard', { p_limit: 0 }))?.me; } catch {}
   const p = S.profile; const need = Number(p.games_for_level) || 3;
   const lv = p.levels || [];
   const tags = Object.entries(p.tags || {});
   screen(`
     <div class="row start" style="gap:14px"><div class="avatar" style="width:68px;height:68px;font-size:24px;background:var(--sea);color:#fff">${initials(p.nickname)}</div>
-      <div style="flex:1"><h1 style="font-size:28px">${esc(p.nickname)}</h1><div class="muted small">${(p.sports || []).map(esc).join(' · ') || 'בחר ספורט למטה'}</div></div></div>
+      <div style="flex:1"><h1 style="font-size:28px">${esc(p.nickname)}</h1><div class="muted small">${me?.stars ? `${stars(me.stars)} · ` : ''}הקפצות</div></div></div>
+    ${me ? `<div class="card link" data-go="#/top" style="cursor:pointer"><div class="row"><div><b>${me.points} נקודות</b>
+        <div class="muted small">${me.rank ? `מקום ${me.rank} בטבלה הארצית` : 'עוד לא בטבלה. כל דירוג טוב אחרי מעגל = נקודות'}</div></div>
+        <span class="muted small">יתרה: ${me.balance} ›</span></div></div>` : ''}
     ${S.pending.map((x) => `<div class="banner"><span>מחכה לדירוג שלך: <b>${esc(x.sport)} ב${esc(x.spot_short)}</b></span><button class="chip sm on" data-go="#/rate/${x.id}">לדרג</button></div>`).join('')}
     <div class="grid3"><div class="stat"><b>${p.games}</b><span class="muted small">משחקים</span></div>
       <div class="stat"><b>${p.reliability}%</b><span class="muted small">הגעה</span></div>
@@ -684,9 +771,7 @@ async function renderProfile() {
         <li>דירוג רחוק מכל השאר באותו משחק כמעט לא נספר.</li>
         <li>אותו שחקן שמדרג אותך שוב ושוב נספר פחות, כדי שחברים לא ינפחו.</li>
         <li>אתה לא רואה מי נתן מה, והרמה זזה לאט.</li></ul></details>
-    <div class="card"><label for="pnick"><b>כינוי</b></label><input id="pnick" class="field" maxlength="20" value="${esc(p.nickname)}">
-      <b>ספורט</b><div class="chips">${SPORTS.map((s) => `<button class="chip sm pill ${(p.sports || []).includes(s) ? 'on' : ''}" data-act="p-sport" data-v="${esc(s)}">${esc(s)}</button>`).join('')}</div>
-      <button class="btn line" data-act="p-save">שמור</button></div>
+    <div class="card"><label for="pnick"><b>כינוי</b></label><input id="pnick" class="field" maxlength="20" value="${esc(p.nickname)}">      <button class="btn line" data-act="p-save">שמור</button></div>
     ${isAnon() ? `<div class="card"><b>שמור את הפרופיל שלך</b>
         <p class="muted small">כרגע הפרופיל שמור רק בטלפון הזה. מחבר חשבון, והרמה, החבר'ה וההיסטוריה נשארים איתך בכל מכשיר.</p>
         <button class="btn line" data-act="link-google">${I.google} שמור עם Google</button>
@@ -737,7 +822,7 @@ document.addEventListener('click', async (e) => {
       case 'f-newspot': S.form.newSpot = S.form.newSpot ? null : { name: '', kind: 'פארק' }; return renderSheet();
       case 'f-sport': S.form.sport = v; S.form.size = DEFAULT_SIZE[v] || 4; return renderSheet();
       case 'f-spot': S.form.spot = v; S.form.newSpot = null; return renderSheet();
-      case 'f-size': S.form.size = Math.max(2, Math.min(12, S.form.size + Number(v))); return renderSheet();
+      case 'f-size': S.form.size = Math.max(2, Math.min(MAX_SIZE, S.form.size + Number(v))); return renderSheet();
       case 'f-open': S.form.open = v === '1'; return renderSheet();
       case 'f-when': S.form.label = v; return renderSheet();
       case 'f-create': return createCircle(a);
@@ -749,6 +834,17 @@ document.addEventListener('click', async (e) => {
         } catch (err) { a.disabled = false; return fail(err); } }
       case 'invite': return invite(S.circle);
       case 'copy-link': return copyLink(v);
+      case 'avail': {
+        a.disabled = true;
+        const c = v === '1' ? await getLocation({ ask: true }) : null;
+        if (v === '1' && !c) { a.disabled = false; return toast('צריך מיקום כדי שיראו שאתה באזור'); }
+        try { await rpc('set_available', { p_on: v === '1', p_lat: c?.lat ?? null, p_lng: c?.lng ?? null, p_pref: levelPref() }); }
+        catch (err) { a.disabled = false; return fail(err); }
+        toast(v === '1' ? 'אתה זמין. שחקנים באזור רואים אותך.' : 'כבר לא זמין'); return renderPlayers(); }
+      case 'lvlpref': { store.set('lvlpref', v);
+        if (location.hash === '#/players') { try { const av = await rpc('my_availability'); if (av?.on && S.coords) await rpc('set_available', { p_on: true, p_lat: S.coords.lat, p_lng: S.coords.lng, p_pref: v }); } catch {} return renderPlayers(); }
+        return renderHome(); }
+      case 'swipe': return doSwipe(v, a);
       case 'fb-send': { const t = $('fbtext').value.trim(); if (t.length < 2) return toast('כתוב משהו קודם');
         a.disabled = true; try { await rpc('send_feedback', { p_body: t }); $('fbtext').value = ''; toast('תודה! קיבלנו.'); } catch (err) { fail(err); } a.disabled = false; return; }
       case 'a-approve': return adminDo('admin_review_spot', { p_id: v, p_approve: true, p_name: $(`pn-${v}`)?.value || null }, 'המקום אושר ומופיע לכולם');
@@ -757,6 +853,7 @@ document.addEventListener('click', async (e) => {
       case 'a-add': return adminAdd(a);
       case 'a-rename': return adminEditSpot(v, 'name');
       case 'a-radius': return adminEditSpot(v, 'radius');
+      case 'a-net': return adminEditSpot(v, 'net');
       case 'a-here': return adminEditSpot(v, 'here');
       case 'a-del': { if (!confirm('למחוק את המקום?')) return;
         try { const r = await rpc('admin_delete_spot', { p_id: v }); toast(r.ok ? 'נמחק' : 'יש בו מעגלים, אי אפשר למחוק'); await renderAdmin(true); } catch (err) { fail(err); } return; }
@@ -779,7 +876,8 @@ document.addEventListener('click', async (e) => {
       case 'vis': try { await rpc('save_profile', { p_nickname: S.profile.nickname, p_sports: S.profile.sports, p_visibility: v }); S.profile.visibility = v; renderCrew(); } catch (err) { fail(err); } return;
       case 'p-sport': { const s = S.profile.sports || []; S.profile.sports = s.includes(v) ? s.filter((x) => x !== v) : [...s, v]; a.classList.toggle('on'); return; }
       case 'p-save': { const nick = $('pnick').value.trim(); if (nick.length < 2) return toast('כינוי של לפחות 2 אותיות');
-        try { await rpc('save_profile', { p_nickname: nick, p_sports: S.profile.sports }); toast('נשמר'); renderProfile(); } catch (err) { fail(err); } return; }
+        try { await rpc('save_profile', { p_nickname: nick, p_sports: SPORTS }); toast('נשמר'); renderProfile(); }
+        catch (err) { if ((err?.message || '').includes('nickname taken')) return toast('הכינוי הזה תפוס. נסה אחר.'); fail(err); } return; }
     }
     return;
   }
